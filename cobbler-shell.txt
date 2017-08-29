@@ -1,0 +1,73 @@
+echo "环境准备：
+下载软件：
+cobbler-2.6.3-1.el6.noarch.rpm      
+Django14-1.4.20-1.el6.noarch.rpm  
+libyaml-0.1.4-2.3.x86_64.rpm
+cobbler-web-2.6.3-1.el6.noarch.rpm  
+koan-2.6.9-1.el6.noarch.rpm       
+PyYAML-3.10-3.1.el6.x86_64.rpm"
+
+echo "redhat安装时配置本地yum源安装"
+rpm -ivh libyaml-0.1.4-2.3.x86_64.rpm
+rpm -ivh PyYAML-3.10-3.1.el6.x86_64.rpm
+yum localinstall koan-2.6.9-1.el6.noarch.rpm
+rpm -ivh Django14-1.4.20-1.el6.noarch.rpm
+yum -y localinstall cobbler-2.6.3-1.el6.noarch.rpm
+yum localinstall cobbler-web-2.6.3-1.el6.noarch.rpm
+
+service cobblerd restart
+chkconfig cobblerd on
+
+yum install vim
+
+sed -i 's/server: 127.0.0.1/server: 192.168.45.128/' /etc/cobbler/settings    #server and next_server are changed
+setenforce 0
+yum -y install syslinux
+yum -y install rsync xinetd
+chkconfig tftp on
+service xinetd start
+chkconfig xinetd on
+iptables -F
+
+yum -y install pykickstart
+openssl passwd -1 -salt 'random-phrase-here' 'redhat'
+sed -i s/'default_password_crypted:.*'/'default_password_crypted: "$1$random-p$MvGDzDfse5HkTwXB2OLNb\."'/g /etc/cobbler/settings
+
+mkdir -p /yum
+mount -o loop /root/cobbler/CentOS-6.5-x86_64-bin-DVD1.iso /yum
+cobbler import --path=/yum  --name=CentOS-6.5-x86_64-bin --arch=x86_64 
+
+#修改dhcp，让cobbler来管理dhcp，并进行cobbler配置同步
+yum -y install dhcp
+
+cp /etc/cobbler/dhcp.template /etc/cobbler/dhcp.template.bak
+
+(cat << EOF
+subnet 192.168.0.0 netmask 255.255.255.0 {
+     option routers             192.168.0.254;
+     option domain-name-servers 192.168.0.254;
+     option subnet-mask         255.255.255.0;
+     range dynamic-bootp        192.168.0.100 192.168.0.110;
+     default-lease-time         21600;
+     max-lease-time             43200;
+     next-server                $next_server;
+     class "pxeclients" {
+          match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
+          if option pxe-system-type = 00:02 {
+                  filename "ia64/elilo.efi";
+          } else if option pxe-system-type = 00:06 {
+                  filename "grub/grub-x86.efi";
+          } else if option pxe-system-type = 00:07 {
+                  filename "grub/grub-x86_64.efi";
+          } else {
+                  filename "pxelinux.0";
+          }
+     }
+
+}
+EOF
+) >/etc/cobbler/dhcp.template
+
+sed -i 's/manage_dhcp: 0/manage_dhcp: 1/' /etc/cobbler/settings
+/etc/init.d/cobblerd restart
+cobbler sync
