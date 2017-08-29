@@ -1,0 +1,355 @@
+
+create database db01;
+use db01
+create table t1(id int ,name varchar(20));
+insert t1 set id=1;
+insert t1 set id=2;
+insert t1 set id=3;
+insert t1 set id=4;
+insert t1 set id=5;
+insert t1 set id=6;
+
+mysql> show master status;
++---------------------+----------+--------------+------------------+-------------------+
+| File                | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++---------------------+----------+--------------+------------------+-------------------+
+| mysql-binlog.000001 |     1358 |              |                  |                   |
++---------------------+----------+--------------+------------------+-------------------+
+1 row in set (0.00 sec)
+
+
+[root@linhai opt]# mysqldump -uroot -p'Gmcc#123' -A --single-transaction --master-data=2 --flush-logs >db01.full1.sql
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+
+mysql>  show master status;
++---------------------+----------+--------------+------------------+-------------------+
+| File                | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++---------------------+----------+--------------+------------------+-------------------+
+| mysql-binlog.000002 |     1455 |              |                  |                   |
++---------------------+----------+--------------+------------------+-------------------+
+1 row in set (0.00 sec)
+
+mysql> insert t1 set id=7;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> insert t1 set id=8;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> insert t1 set id=9;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> update t1 set id=10 where id=1;
+Query OK, 1 row affected (0.01 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+
+mysql> delete from t1 where id=2;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> select * from t1;
++------+-------+
+| id   | name  |
++------+-------+
+|   10 | zhang |
+|    3 | NULL  |
+|    4 | NULL  |
+|    5 | NULL  |
+|    6 | NULL  |
+|    7 | NULL  |
+|    8 | NULL  |
+|    9 | NULL  |
++------+-------+
+8 rows in set (0.00 sec)
+
+[root@linhai ~]# date
+Sun Jul 30 17:36:33 CST 2017
+
+mysql> delete from db01.t1;
+Query OK, 8 rows affected (0.01 sec)
+
+mysql> select * from db01.t1;
+Empty set (0.00 sec)
+
+---数据库恢复 ----
+[root@linhai opt]# mysql -uroot -p <db01.full1.sql
+Enter password:
+mysql> select * from db01.t1;
++------+-------+
+| id   | name  |
++------+-------+
+|    1 | zhang |
+|    2 | li    |
+|    3 | NULL  |
+|    4 | NULL  |
+|    5 | NULL  |
+|    6 | NULL  |
++------+-------+
+6 rows in set (0.00 sec)
+
+
+5.7 版本查看binlog 日志;
+mysql> set  binlog_row_image ='minimal';
+Query OK, 0 rows affected (0.00 sec)
+
+mysqlbinlog --no-defaults -v -v --base64-output=DECODE-ROWS mysql-binlog.000002 |more
+开始点
+at 339
+#170730 17:32:36 server id 1  end_log_pos 379 CRC32 0xc409d6e3 	Write_rows: table id 110 flags: STMT_END_F
+### INSERT INTO `db01`.`t1`
+### SET
+###   @1=7 /* INT meta=0 nullable=1 is_null=0 */
+###   @2=NULL /* VARSTRING(60) meta=60 nullable=1 is_null=1 */
+
+结束点
+# at 1333
+#170730 17:33:31 server id 1  end_log_pos 1381 CRC32 0x8db2a58b 	Table_map: `db01`.`t1` mapped to number 110
+# at 1381
+#170730 17:33:31 server id 1  end_log_pos 1424 CRC32 0x15a9bbb3 	Delete_rows: table id 110 flags: STMT_END_F
+### DELETE FROM `db01`.`t1`
+### WHERE
+###   @1=2 /* INT meta=0 nullable=1 is_null=0 */
+###   @2='li' /* VARSTRING(60) meta=60 nullable=1 is_null=0 */
+# at 1588
+#170730 17:37:05 server id 1  end_log_pos 1636 CRC32 0x07c2b9eb 	Table_map: `db01`.`t1` mapped to number 110
+# at 1636
+#170730 17:37:05 server id 1  end_log_pos 1717 CRC32 0x6827f207 	Delete_rows: table id 110 flags: STMT_END_F
+### DELETE FROM `db01`.`t1`
+### WHERE
+###   @1=10 /* INT meta=0 nullable=1 is_null=0 */
+###   @2='zhang' /* VARSTRING(60) meta=60 nullable=1 is_null=0 */
+### DELETE FROM `db01`.`t1`
+### WHERE
+###   @1=3 /* INT meta=0 nullable=1 is_null=0 */
+###   @2=NULL /* VARSTRING(60) meta=60 nullable=1 is_null=1 */
+### DELETE FROM `db01`.`t1
+
+binlog恢复：
+mysqlbinlog --no-defaults  mysql-binlog.000002 --start-position=291  --stop-position=1455 |mysql -uroot -p
+
+---------------------------------------- 演习 2-----------------------------------------------------------
+
+mysqldump -uroot -p'Gmcc#123' -A --single-transaction --master-data=2 --flush-logs >db02.full1.sql
+
+mysql> show master status;
++---------------------+----------+--------------+------------------+-------------------+
+| File                | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++---------------------+----------+--------------+------------------+-------------------+
+| mysql-binlog.000003 |      154 |              |                  |                   |
++---------------------+----------+--------------+------------------+-------------------+
+1 row in set (0.00 sec)
+
+mysql> insert into db01.t1 set id=11;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> insert into db01.t1 set id=12;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> drop table db01.t1;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> create database db02;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> create table db02.t1(id int);
+Query OK, 0 rows affected (0.12 sec)
+
+mysql> select * from db01.t1
+    -> ;
+ERROR 1146 (42S02): Table 'db01.t1' doesn't exist
+mysql> select * from db02.t1;
+Empty set (0.00 sec)
+
+mysql> drop table db02.t1;
+Query OK, 0 rows affected (0.01 sec)
+
+mysqlbinlog --no-defaults -v -v --base64-output=DECODE-ROWS mysql-binlog.000003
+
+# at 627
+#170730 21:21:35 server id 1  end_log_pos 658 CRC32 0x9645828f 	Xid = 2071
+COMMIT/*!*/;
+# at 658
+#170730 21:21:53 server id 1  end_log_pos 723 CRC32 0x629ef1ac 	Anonymous_GTID	last_committed=2	sequence_number=3
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 723
+
+
+#170730 21:22:04 server id 1  end_log_pos 1000 CRC32 0x5c911bda 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1501420924/*!*/;
+create database db02
+/*!*/;
+# at 1000
+#170730 21:22:24 server id 1  end_log_pos 1065 CRC32 0xf085e836 	Anonymous_GTID	last_committed=4	sequence_number=5
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 1065
+#170730 21:22:24 server id 1  end_log_pos 1163 CRC32 0x17dc24c3 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1501420944/*!*/;
+create table db02.t1(id int)
+/*!*/;
+
+# at 1163
+#170730 21:23:50 server id 1  end_log_pos 1228 CRC32 0x0325763a 	Anonymous_GTID	last_committed=5	sequence_number=6
+SET @@SESSION.GTID_NEXT= 'ANONYMOUS'/*!*/;
+# at 1228
+#170730 21:23:50 server id 1  end_log_pos 1346 CRC32 0x897623a2 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1501421030/*!*/;
+DROP TABLE `db02`.`t1` /* generated by server */
+/*!*/;
+
+
+
+mysql -uroot -p <db02.full1.sql
+
+mysqlbinlog --no-defaults  mysql-binlog.000003 --start-position=154  --stop-datetime='2017-07-30 21:21:53' |mysql -uroot -p
+mysql> select * from db01.t1;
++------+-------+
+| id   | name  |
++------+-------+
+|   10 | zhang |
+|    3 | NULL  |
+|    4 | NULL  |
+|    5 | NULL  |
+|    6 | NULL  |
+|    7 | NULL  |
+|    8 | NULL  |
+|    9 | NULL  |
+|   11 | NULL  |
+|   12 | NULL  |
++------+-------+
+10 rows in set (0.00 sec)
+mysql> select db02.t1;
+ERROR 1109 (42S02): Unknown table 'db02' in field list
+
+
+[root@linhai mysql]#mysqlbinlog --no-defaults  mysql-binlog.000003 --start-datetime='2017-07-30 21:22:08'  --stop-datetime='2017-07-30 21:22:49' |mysql -uroot -p
+mysql> select * from  db02.t1;
+Empty set (0.00 sec)
+
+
+
+
+---------------------------- 演练3 -------------------------------------------------
+全备份：
+[root@linhai opt]# mysqldump -uroot -p'Gmcc#123' -A --single-transaction --master-data=2 --flush-logs >db03.full1.sql
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+[root@linhai opt]# mysql -uroot -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 38
+Server version: 5.7.14-log Source distribution
+
+Copyright (c) 2000, 2016, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show master status;
++---------------------+----------+--------------+------------------+-------------------+
+| File                | Position | Binlog_Do_DB | Binlog_Ignore_DB | Executed_Gtid_Set |
++---------------------+----------+--------------+------------------+-------------------+
+| mysql-binlog.000004 |      154 |              |                  |                   |
++---------------------+----------+--------------+------------------+-------------------+
+1 row in set (0.00 sec)
+
+mysql> insert into db01.t1 set id=13;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> insert into db01.t1 set id=14;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> delete from db01.t1;
+Query OK, 12 rows affected (0.01 sec)
+
+mysql> insert into db02.t1 set id=1;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into db02.t1 set id=2;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> insert into db02.t1 set id=3;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> delete from db02.t1;
+Query OK, 3 rows affected (0.01 sec)
+
+mysql> insert into db02.t1 set id=4;
+Query OK, 1 row affected (0.01 sec)
+
+mysql> insert into db02.t1 set id=5;
+Query OK, 1 row affected (0.01 sec)
+
+--查询出其实节点号
+[root@linhai mysql]#mysqlbinlog --no-defaults -v -v --base64-output=DECODE-ROWS mysql-binlog.000004 |more
+
+---恢复：
+mysql -uroot -p <db03.full1.sql
+mysql> select * from db01.t1;
++------+-------+
+| id   | name  |
++------+-------+
+|   10 | zhang |
+|    3 | NULL  |
+|    4 | NULL  |
+|    5 | NULL  |
+|    6 | NULL  |
+|    7 | NULL  |
+|    8 | NULL  |
+|    9 | NULL  |
+|   11 | NULL  |
+|   12 | NULL  |
++------+-------+
+10 rows in set (0.00 sec)
+
+mysql> select * from db02.t1;
+Empty set (0.00 sec)
+增量恢复：
+[root@linhai mysql]# mysqlbinlog --no-defaults  mysql-binlog.000004 --start-position=287  --stop-position=791 |mysql -uroot -p
+Enter password:
+mysql> select * from db01.t1;
++------+-------+
+| id   | name  |
++------+-------+
+|   10 | zhang |
+|    3 | NULL  |
+|    4 | NULL  |
+|    5 | NULL  |
+|    6 | NULL  |
+|    7 | NULL  |
+|    8 | NULL  |
+|    9 | NULL  |
+|   11 | NULL  |
+|   12 | NULL  |
+|   13 | NULL  |
+|   14 | NULL  |
++------+-------+
+12 rows in set (0.00 sec
+
+[root@linhai mysql]# mysqlbinlog --no-defaults  mysql-binlog.000004 --start-position=1104  --stop-position=1851 |mysql -uroot -p
+Enter password:
+
+mysql> select * from db02.t1;
++------+
+| id   |
++------+
+|    1 |
+|    2 |
+|    3 |
++------+
+3 rows in set (0.00 sec
+
+[root@linhai mysql]# mysqlbinlog --no-defaults  mysql-binlog.000004 --start-position=1977  --stop-position=2475 |mysql -uroot -p
+Enter password:
+mysql> select * from db02.t1;
++------+
+| id   |
++------+
+|    1 |
+|    2 |
+|    3 |
+|    4 |
+|    5 |
++------+
+5 rows in set (0.00 sec
+
+
