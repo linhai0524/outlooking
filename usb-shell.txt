@@ -1,0 +1,69 @@
+
+dd if=/dev/zero of=/dev/sdb bs=500 count=1
+fdisk -cu /dev/sdb <<EOF
+n
+p
+1
+
++6G
+a
+1
+w
+EOF
+
+mkdir /mnt/usb
+mount /dev/sdb1  /mnt/usb/
+
+mkdir -p /dev/shm/usb
+yum -y install filesystem bash coreutils passwd shadow-utils openssh-clients rpm yum net-tools bind-utils vim-enhanced findutils lvm2 util-linux-ng --installroot=/dev/shm/usb/ --releasever=/
+cp -arv /dev/shm/usb/* /mnt/usb/
+
+mkdir -p /mnt/usb/boot/
+mkdir -p /mnt/usb/lib/modules
+cp /boot/vmlinuz-2.6.32-431.el6.x86_64 /mnt/usb/boot/
+cp /boot/initramfs-2.6.32-431.el6.x86_64.img /mnt/usb/boot/
+cp -arv /lib/modules/2.6.32-431.el6.x86_64/  /mnt/usb/lib/modules/
+
+rpm -ivh /root/grub-0.97-77.el6.x86_64.rpm --root=/mnt/usb/ --nodeps --force
+grub-install --root-directory=/mnt/usb/  --recheck  /dev/sdb
+cp /boot/grub/grub.conf /mnt/usb/boot/grub/
+
+blkid  /dev/sdb1
+/dev/sdb1: UUID="AEC9-1EA0" TYPE="vfat"
+
+uuid=blkid  /dev/sdb1 |awk -F\" '{print $2}'
+
+
+cat >/mnt/usb/boot/grub/grub.conf <<EOF
+default=0
+timeout=5
+splashimage=/boot/grub/splash.xpm.gz
+title My USB System from hugo
+        root (hd0,0)
+        kernel /boot/vmlinuz-2.6.32-431.el6.x86_64 ro root=UUID="AEC9-1EA0"
+        initrd /boot/initramfs-2.6.32-431.el6.x86_64.img
+EOF
+
+mkdir -p /mnt/usb/root/
+cp /etc/skel/.bash* /mnt/usb/root/
+
+mkdir -p /mnt/usb/etc/sysconfig/
+vi /mnt/usb/etc/sysconfig/network
+mkdir -p /mnt/usb/etc/sysconfig/network-scripts/
+cp /etc/sysconfig/network-scripts/ifcfg-eth0 /mnt/usb/etc/sysconfig/network-scripts/
+
+sed -i 's/IPADDR=192.168.45.128/IPADDR=192.168.45.228/' /mnt/usb/etc/sysconfig/network-scripts/ifcfg-eth0
+
+cat >/mnt/usb/etc/fstab <<EOF
+UUID="AEC9-1EA0" / ext4 defaults 0 0
+sysfs                   /sys                    sysfs   defaults        0 0
+proc                    /proc                   proc    defaults        0 0
+tmpfs                   /dev/shm                tmpfs   defaults        0 0
+devpts                  /dev/pts                devpts  gid=5,mode=620  0 0
+EOF
+
+cat >/mnt/usb/etc/shadow >>EOF
+root:$1$oQ94S/$vvT3.WTiBKqjqr6cOzndT0:15422:0:99999:7:::
+EOF
+
+sync
