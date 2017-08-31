@@ -1,0 +1,110 @@
+
+#在目标服务器上操作
+sub target-set {
+setenfore 0
+iptables -F
+
+yum -y install rsync xinetd
+
+echo '/usr/bin/rsync --daemon --config=/etc/rsyncd.conf' >>/etc/rc.d/rc.local
+chmod +x /etc/rc.d/rc.local
+
+
+cat >/etc/rsyncd.conf  <<EOF
+log file =/var/log/rsyncd.log
+pidfile =/var/run/rsyncd.pid
+lock file =/var/run/rsync.lock
+#motd file =/etc/rsyncd.Motd
+
+[Sync]
+path = /home/Sync/
+comment = Sync
+uid = root
+gid = root
+port=873
+use chroot= no
+read only =no
+list = no
+maxconnections = 200
+timeout =600
+auth users= Sync
+secretsfile = /etc/rsync.pass
+hosts allow= 192.168.45.134
+EOF
+
+echo 'Sync:redhat' >/etc/rsync.pass
+chmod 600 /etc/rsyncd.conf
+chmod 600 /etc/rsync.pass
+
+
+usr/bin/rsync --daemon --config=/etc/rsyncd.conf
+systemctl start xinetd
+systemctl enable xinetd
+
+}
+
+########################################################################################
+##在源服务器上操作
+
+sub source-set {
+setenfore 0
+iptables -F
+
+yum -y install rsync xinetd
+systemctl start xinetd
+echo 'redhat' >/etc/rsync.pass
+chmod 600 /etc/rsync.pass
+
+mkdir -p /home/Sync/ceshi
+
+cd /usr/local/src
+wget https://sersync.googlecode.com/files/sersync2.5.4_64bit_binary_stable_final.tar.gz
+tar xf sersync2.5.4_64bit_binary_stable_final.tar.gz
+mv GNU-Linux-x86  /usr/local/sersync
+cd  /usr/local/sersync 
+cp confxml.xml confxml.xml-bak  
+
+sed -i 's/<localpath watch="\/opt\/tongbu">/<localpath watch="\/home\/Sync\/ceshi">/g' /usr/local/sersync/confxml.xml
+sed -i 's/<remote ip="127.0.0.1" name="tongbu"\/>/<remote ip="127.0.0.1" name="Sync"\/>">/g' /usr/local/sersync/confxml.xml
+sed -i 's/<crontab start="false"/<crontab start="true"/g' /usr/local/sersync/confxml.xml
+
+echo '/usr/local/sersync/sersync2 -d -r -o  /usr/local/sersync/confxml.xml' >>/etc/rc.d/rc.local
+
+cat >/home/Sync/check_sersync.sh <<EOF
+#!/bin/sh
+sersync="/usr/local/sersync/sersync2"
+confxml="/usr/local/sersync/confxml.xml"
+status=$(ps aux |grep 'sersync2'|grep -v 'grep'|wc -l)
+if [ $status -eq 0 ];
+then
+$sersync -d -r -o $confxml &
+else
+exit 0;
+fi
+EOF
+
+
+chmod +x /home/Sync/check_sersync.sh
+echo '*/5 * * * * root /home/Sync/check_sersync.sh > /dev/null 2>&1' >>/etc/crontab
+systemctl reload crond
+
+}
+
+
+echo "安装源服务器192.168.45.134，请输入1:"
+echo "安装目标服务器192.168.45.133，请输入2:"
+echo "输入其他则退出："
+
+read input
+
+case $input in
+1)
+    source-set
+    ;;
+2)
+    target-set
+    ;;
+*)
+    exit
+    ;;
+esac

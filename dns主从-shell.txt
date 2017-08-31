@@ -1,0 +1,130 @@
+#!/bin/bash
+
+setenforce 0
+iptables -F
+
+yum -y install bind
+
+
+解析的主机名称：www.abc.com
+电信客户端ip：192.168.45.129   希望其解析到结果为192.168.11.1
+网通客户端ip：192.168.45.130   希望其解析到结果为22.21.1.1
+其余剩下其他运营商的客户端解析的结果皆为1.1.1.1
+
+/etc/named.conf
+
+options {
+	listen-on port 53 { 127.0.0.1; any; };
+	directory 	"/var/named";
+	dump-file 	"/var/named/data/cache_dump.db";
+	statistics-file "/var/named/data/named_stats.txt";
+	memstatistics-file "/var/named/data/named_mem_stats.txt";
+	allow-query     { localhost; any; };
+	recursion yes;
+	dnssec-enable no;
+	dnssec-validation no;
+	dnssec-lookaside auto;
+	bindkeys-file "/etc/named.iscdlv.key";
+	managed-keys-directory "/var/named/dynamic";
+	pid-file "/run/named/named.pid";
+	session-keyfile "/run/named/session.key";
+};
+logging {
+        channel default_debug {
+                file "data/named.run";
+                severity dynamic;
+        };
+};
+view "dxclient" {
+        match-clients { 192.168.45.129; };
+        zone "." IN {
+                type hint;
+                file "named.ca";
+        };
+        zone "abc.com" IN {
+                type master;
+                file "dx.abc.com.zone";
+        };
+include "/etc/named.rfc1912.zones";
+};
+view "wtclient" {
+        match-clients { 192.168.45.130; };
+        zone "." IN {
+                type hint;
+                file "named.ca";
+        };
+        zone "abc.com" IN {
+                type master;
+                file "wt.abc.com.zone";
+        };
+include "/etc/named.rfc1912.zones";
+};
+view "other" {
+        match-clients { any;};
+         zone "." IN {
+                type hint;
+                file "named.ca";
+        };
+        zone "abc.com" IN {
+                type master;
+                file "other.abc.com.zone";
+        };
+include "/etc/named.rfc1912.zones";
+};
+include "/etc/named.root.key";
+
+
+cd /var/named/
+cat >dx.abc.com.zone <<EOF
+$TTL 1D
+@       IN SOA  ns1.abc.com. nsmail.abc.com. (
+                                        10       ; serial
+                                        1D      ; refresh
+                                        1H      ; retry
+                                        1W      ; expire
+                                        3H )    ; minimum
+@       NS      ns1.abc.com.
+ns1     A       192.168.45.133
+www     A       192.168.11.1
+EOF
+
+cat >wt.abc.com.zone <<EOF
+$TTL 1D
+@       IN SOA  ns1.abc.com. nsmail.abc.com. (
+                                        10       ; serial
+                                        1D      ; refresh
+                                        1H      ; retry
+                                        1W      ; expire
+                                        3H )    ; minimum
+@       NS      ns1.abc.com.
+ns1     A       192.168.45.133
+www     A       22.21.1.1
+EOF
+
+cat >other.abc.com.zone <<EOF
+$TTL 1D
+@       IN SOA  ns1.abc.com. nsmail.abc.com. (
+                                        10       ; serial
+                                        1D      ; refresh
+                                        1H      ; retry
+                                        1W      ; expire
+                                        3H )    ; minimum
+@       NS      ns1.abc.com.
+ns1     A       1192.168.45.133
+www     A       1.1.1.1
+EOF
+
+
+chgrp named wt.abc.com.zone dx.abc.com.zone other.abc.com.zone
+
+
+## 从服务器配置
+setenforce 0
+iptables -F
+
+yum -y install bind
+
+scp /etc/named.conf root@192.168.45.134:/etc/
+scp *.abc.com.zone root@192.168.45.134:/var/named/
+
+sed -i 's/type master;/type master;\n/masters { 192.168.45.133; };/g' /etc/named.conf

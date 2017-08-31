@@ -1,0 +1,36 @@
+
+setenforce 0
+iptables -F
+
+yum localinstall ./cacti-0.8.8b-7.el7.noarch.rpm
+yum -y install mariadb-server
+
+cat >test.sql <<EOF
+delete from mysql.user where user='';
+update mysql.user set password=password('redhat');
+flush privileges;
+create database cacti;
+grant all on cacti.* to cacti@'localhost' identified by 'uplooking';
+flush privileges;
+EOF
+
+mysql -uroot -p mysql<./test.sql
+mysql -uroot -predhat cacti < /usr/share/doc/cacti-0.8.8b/cacti.sql
+
+
+sed -i 's/database_username = "cactiuser"/database_username = "cacti"'   /etc/cacti/db.php
+sed -i 's/database_password = "cactiuser"/database_password = "uplooking"/' /etc/cacti/db.php
+sed -i 's/Require host localhost/Require all granted/g' /etc/httpd/conf.d/cacti.conf
+sed -i 's/;date.timezone =/date.timezone = 'Asia/Shanghai'/g' /etc/php.ini
+sed -i 's/#//' /etc/cron.d/cacti
+
+systemctl start httpd
+systemctl start snmpd
+
+
+###### °²×°ÅäÖÃ nagios ######
+cd /root/nagios/pkg
+yum localinstall *.rpm
+
+systemctl restart httpd
+systemctl start nagios
